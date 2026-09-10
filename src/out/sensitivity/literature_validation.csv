@@ -1,0 +1,8 @@
+source,system,Vf,EfEm,L_um,D_um,L_eq,E_meas,E_pred,dev_pct,clipped,notes
+Verho 2022,BSKP pulp/PLA (IM),0.081,4.7,115,18.34,63.0,3.7,3.86,4.2,Vf 0.08->0.10,+-0.2
+Verho 2022,BSKP pulp/PLA (IM),0.166,4.7,115,18.34,63.0,4.4,4.28,-2.6,,+-0.2
+Verho 2022,BSKP pulp/PLA (IM),0.255,4.7,115,18.34,63.0,5.2,4.98,-4.2,,+-0.2
+Lusti 2002 (SCORIM),glass/PP (IM),0.08,46.2,427,12.0,356.0,5.99,5.36,-10.6,Vf 0.08->0.10; L_eq 356->200,+-0.31; <cos2t>=0.967
+Lusti 2002 (conv.),glass/PP (IM),0.08,46.2,448,12.0,373.0,5.09,5.36,5.2,Vf 0.08->0.10; L_eq 373->200,+-0.25; <cos2t>=0.872
+Choy via Chen 1996,glass/PPS (IM),0.264,19.0,170,10.0,170.0,16.1,15.29,-5.0,,ultrasonic; middle layer (skin 19.2)
+Ivan 2022,glass/PPS (IM),0.261,19.0,229,10.0,229.0,16.41,15.29,-6.8,L_eq 229->200,constituents and length assumed typical
