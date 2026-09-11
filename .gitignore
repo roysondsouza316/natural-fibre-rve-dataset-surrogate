@@ -1,3 +1,4 @@
 __pycache__/
 *.joblib
 src/out/models/
+!src/out/surrogate_hgb.joblib

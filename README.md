@@ -29,7 +29,10 @@ src/
   04_exact_anova.py            exact factorial ANOVA on the design grid
                                (Supplementary Material)
   05_model_benchmark.py        cross-validated surrogate benchmark
+  predict.py                   evaluates the trained surrogate for one
+                               parameter combination (see below)
   out/
+    surrogate_hgb.joblib          the trained gradient-boosting surrogates
     dataset.csv                   the 2520-run dataset (see below)
     orientation_dataset.csv       the 252-run orientation sub-study (see below)
     sensitivity/*.csv             Sobol indices, verification checks,
@@ -81,6 +84,33 @@ from their periodic images.
 | `case`, `fiber_modulus`, `matrix_modulus` | modulus-ratio index and the fibre and matrix moduli; the matrix modulus is 1, so `fiber_modulus` equals E_f/E_m |
 | `E1` ... `v23` | the nine homogenised constants normalised by the matrix modulus, direction 3 being the mean fibre direction |
 
+## Using the surrogate
+
+The trained gradient-boosting surrogates of the manuscript are stored in
+`src/out/surrogate_hgb.joblib` (10 MB). `predict.py` evaluates them for
+one parameter combination and prints the nine constants:
+
+```
+cd src
+python predict.py --vf 0.20 --efem 20 --alpha 2 --lp 100 --kappa 10 --dist exponential
+```
+
+The inputs are the fibre volume fraction, the fibre-to-matrix modulus
+ratio, the cross-section aspect ratio, the projected fibre length in
+micrometres (nominal mean for the exponential distribution), the waviness
+level `kappa_theta` (0 = straight, 20, 10, 5; or `--tdeg` for the mean
+deviation inclination in degrees) and the length distribution. The
+surrogate is trained on the design window of the dataset (v_f 0.10 to
+0.30, E_f/E_m 4 to 48, alpha 1 to 3, L_p 50 to 200 um) and warns when an
+input lies outside it. The fibre thickness of the dataset is 10 um; for
+fibres of another thickness, scale the length by the thickness ratio. To
+use the models in your own code:
+
+```python
+from predict import predict
+predict(vf=0.20, efem=20, alpha=2, lp=100, tdeg=25.8, dist='exponential')
+```
+
 ## Reproducing the analysis
 
 ```
@@ -97,7 +127,8 @@ All scripts use fixed random seeds, so the outputs in `src/out/` are
 reproduced exactly. The trained surrogate bundle
 (`src/out/sensitivity/surrogates_tdeg.joblib`, about 260 MB, dominated by
 the Gaussian-process cross-check models) is not stored in the repository;
-`01_train_surrogates.py` regenerates it from the dataset in a few minutes.
+`01_train_surrogates.py` regenerates it from the dataset in a few minutes
+and also rewrites the light `surrogate_hgb.joblib` used by `predict.py`.
 
 The RVE generation, periodic meshing and finite-element homogenisation that
 produced the dataset use the open framework of Verho et al., Composites
