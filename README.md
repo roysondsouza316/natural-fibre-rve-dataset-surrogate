@@ -131,9 +131,9 @@ the Gaussian-process cross-check models) is not stored in the repository;
 and also rewrites the light `surrogate_hgb.joblib` used by `predict.py`.
 
 The RVE generation, periodic meshing and finite-element homogenisation that
-produced the dataset use the open framework of Verho et al., Composites
-Science and Technology 230 (2022) 109713,
-https://doi.org/10.1016/j.compscitech.2022.109713.
+produced the dataset were carried out with the in-house microstructure
+framework described in Verho et al., Composites Science and Technology 230
+(2022) 109713, https://doi.org/10.1016/j.compscitech.2022.109713.
 
 ## License
 
