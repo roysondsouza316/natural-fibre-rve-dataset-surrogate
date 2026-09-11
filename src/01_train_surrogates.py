@@ -116,6 +116,11 @@ for dist in ('constant', 'exponential'):
     bundle[dist] = {'hgb': hgb, 'gp': gp, 'scaler': scaler}
 joblib.dump(bundle, OUT / 'surrogates_tdeg.joblib')
 print('  saved', OUT / 'surrogates_tdeg.joblib')
+# light copy with the HGB models only, used by predict.py
+light = {d: {'hgb': bundle[d]['hgb'], 'scaler': bundle[d]['scaler']}
+         for d in bundle}
+joblib.dump(light, OUT.parent / 'surrogate_hgb.joblib', compress=3)
+print('  saved', OUT.parent / 'surrogate_hgb.joblib')
 
 
 # ----------------------------------------------------------------------
