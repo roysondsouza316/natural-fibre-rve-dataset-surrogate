@@ -44,7 +44,7 @@ contrast, 2520 rows in total (360 geometries times 7 modulus ratios).
 
 | column | meaning |
 | --- | --- |
-| `fiber_fraction` | fibre volume fraction V_f (0.10 to 0.30, 5 levels) |
+| `fiber_fraction` | fibre volume fraction v_f (0.10 to 0.30, 5 levels) |
 | `Ef_Em` | fibre-to-matrix modulus ratio E_f/E_m (4 to 48, 7 levels) |
 | `width_to_thickness_ratio` | cross-section aspect ratio alpha (1, 2, 3) |
 | `length_value` | projected fibre length L_p in micrometres (50, 100, 200); the fixed length for the constant distribution and the distribution parameter for the truncated exponential |
@@ -70,7 +70,7 @@ from their periodic images.
 | column | meaning |
 | --- | --- |
 | `set`, `sim`, `random_seed` | simulation batch, RVE identifier and realisation seed |
-| `fiber_fraction` | fibre volume fraction V_f (0.10, 0.20, 0.30) |
+| `fiber_fraction` | fibre volume fraction v_f (0.10, 0.20, 0.30) |
 | `box_x`, `box_y`, `box_z` | RVE cell dimensions in micrometres |
 | `fiber_clearance` | minimum gap kept between fibres during packing, micrometres |
 | `length_type` | `constant` or `exponential` |
