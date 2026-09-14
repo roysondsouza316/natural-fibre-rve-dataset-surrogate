@@ -1,47 +1,31 @@
-"""
-Surrogate training and global sensitivity analysis
---------------------------------------------------
-The sensitivity question is posed over CONTINUOUS uniform ranges of the
-design window (log-uniform for fibre length), per length-distribution
-type, so the learned surrogate is required to answer it. Sobol indices
-are estimated with Saltelli/Jansen estimators on quasi-random Sobol'
-samples with bootstrap confidence intervals.
+"""Train the surrogates and run the sensitivity verification chain.
 
-Verification chain
-  1. Exact 5-factor ANOVA per distribution on the factorial grid
-     (computed inline; discrete uniform over the design levels).
-  2. The same Saltelli estimator restricted to the grid levels must
-     reproduce (1) within estimator noise -> the surrogate and the
-     estimator are faithful where the truth is known exactly.
-  3. The continuous-range indices are then the headline numbers.
+Sensitivity is posed over continuous uniform ranges of the design window
+(log-uniform in fibre length), per length-distribution type; Sobol
+indices are estimated with Saltelli/Jansen estimators on quasi-random
+Sobol' samples with bootstrap confidence intervals. Verification chain:
+(1) exact 5-factor ANOVA on the design grid, (2) the same Saltelli
+estimator restricted to the grid levels must reproduce it, (3) the
+polynomial surrogate (surrogate_poly.py) cross-checks the continuous
+indices of the GP of record (surrogate_gp.py).
 
-Waviness is parameterised by the mean deviation inclination tdeg
-(0, 18.2, 25.8, 36.9 deg), which is monotone in physical waviness;
-the raw kappa_theta feature is NOT (0 means straight). Length enters
-the feature vector as log10(L).
+Waviness enters as the mean deviation inclination tdeg in degrees,
+which is monotone in physical waviness (kappa_theta is not: 0 means
+straight); length enters as log10 L. 02_sobol_indices.py recomputes the
+continuous indices with a larger sample for the manuscript numbers.
 
-02_sobol_indices.py then repeats the continuous block with the centred
-first-order estimator and a larger sample; those outputs are the
-numbers reported in the manuscript.
-
-Outputs (out/sensitivity/)
-  surrogates_tdeg.joblib      HGB + GP per distribution, tdeg feature
-  sobol_continuous.csv        per-dist S1/ST (+CI) over continuous ranges
-  sobol_table6.csv            6-factor headline table (Dist as group)
-  sobol_grid_check.csv        exact grid ANOVA vs Saltelli-on-grid
-  sobol_conditional.csv       3-factor indices at the anchor compositions
-  sobol_gp_check.csv          GP cross-check of the continuous indices
-  sobol_s2.csv                second-order (closed) pair indices
+Writes surrogates_tdeg.joblib and the sobol_*.csv tables to
+out/sensitivity/, and gp_hyperparameters.json (used by predict.py) to
+out/. Runtime about half an hour.
 """
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
 from scipy.stats import qmc
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
-from sklearn.preprocessing import StandardScaler
+
+from surrogate_gp import gp_surrogate
+from surrogate_poly import poly_surrogate
 
 RNG = np.random.default_rng(11)
 HERE = Path(__file__).resolve().parent
@@ -96,31 +80,24 @@ bundle = {}
 for dist in ('constant', 'exponential'):
     sub = df[df.length_distribution_type == dist]
     X = sub[FEAT_SRC].values
-    hgb = {}
     gp = {}
-    scaler = StandardScaler().fit(X)
-    Xs = scaler.transform(X)
+    poly = {}
     for t in TARGETS:
         y = sub[t].values
-        m = HistGradientBoostingRegressor(
-            max_iter=500, learning_rate=0.05, min_samples_leaf=5,
-            random_state=0).fit(X, y)
-        hgb[t] = m
-        kern = (ConstantKernel(1.0, (1e-3, 1e3))
-                * RBF(length_scale=np.ones(5),
-                      length_scale_bounds=(0.3, 5.0))
-                + WhiteKernel(1e-6, (1e-9, 1e-2)))
-        g = GaussianProcessRegressor(kernel=kern, normalize_y=True,
-                                     random_state=0).fit(Xs, y)
-        gp[t] = g
-    bundle[dist] = {'hgb': hgb, 'gp': gp, 'scaler': scaler}
+        gp[t] = gp_surrogate().fit(X, y)
+        poly[t] = poly_surrogate().fit(X, y)
+        print(f'  {dist}/{t}: {gp[t][-1].regressor_.kernel_}', flush=True)
+    bundle[dist] = {'gp': gp, 'poly': poly}
 joblib.dump(bundle, OUT / 'surrogates_tdeg.joblib')
 print('  saved', OUT / 'surrogates_tdeg.joblib')
-# light copy with the HGB models only, used by predict.py
-light = {d: {'hgb': bundle[d]['hgb'], 'scaler': bundle[d]['scaler']}
-         for d in bundle}
-joblib.dump(light, OUT.parent / 'surrogate_hgb.joblib', compress=3)
-print('  saved', OUT.parent / 'surrogate_hgb.joblib')
+# fitted kernel hyperparameters, from which predict.py rebuilds the GP
+# without optimisation (the full bundle is too large for the repository)
+import json
+hyper = {d: {t: {'theta': bundle[d]['gp'][t][-1].regressor_.kernel_.theta.tolist(),
+                 'kernel': str(bundle[d]['gp'][t][-1].regressor_.kernel_)}
+             for t in TARGETS} for d in bundle}
+json.dump(hyper, open(OUT.parent / 'gp_hyperparameters.json', 'w'), indent=1)
+print('  saved', OUT.parent / 'gp_hyperparameters.json')
 
 
 # ----------------------------------------------------------------------
@@ -241,7 +218,7 @@ store = {}
 for dist in ('constant', 'exponential'):
     sub = df[df.length_distribution_type == dist]
     for t in TARGETS:
-        m = bundle[dist]['hgb'][t]
+        m = bundle[dist]['gp'][t]
         # continuous headline run (with S2 matrices)
         fA, fB, fAB, fBA = sobol_run(m, N_CONT, 5, map_continuous,
                                      seed=101, with_s2=True)
@@ -265,22 +242,20 @@ for dist in ('constant', 'exponential'):
             rows_grid.append(dict(dist=dist, target=t, factor=f,
                                   S1_exact=eS1[j], S1_saltelli=gS1[j],
                                   ST_exact=eST[j], ST_saltelli=gST[j]))
-        # GP cross-check (continuous)
-        g = bundle[dist]['gp'][t]
-        sc = bundle[dist]['scaler']
-        pA, pB, pAB, _ = sobol_run(g, N_GP, 5, map_continuous,
-                                   seed=101, scaler=sc)
+        # polynomial cross-check (continuous): other model, same samples
+        g = bundle[dist]['poly'][t]
+        pA, pB, pAB, _ = sobol_run(g, N_CONT, 5, map_continuous, seed=101)
         pS1, pST = indices_from(pA, pB, pAB)
         for j, f in enumerate(FACTORS):
             rows_gp.append(dict(dist=dist, target=t, factor=f,
-                                S1_hgb=S1[j], S1_gp=pS1[j],
-                                ST_hgb=ST[j], ST_gp=pST[j]))
-    print(f'  {dist}: continuous + grid check + GP check done')
+                                S1_gp=S1[j], S1_poly=pS1[j],
+                                ST_gp=ST[j], ST_poly=pST[j]))
+    print(f'  {dist}: continuous + grid check + polynomial check done', flush=True)
 
 pd.DataFrame(rows_cont).to_csv(OUT / 'sobol_continuous.csv', index=False)
 pd.DataFrame(rows_grid).to_csv(OUT / 'sobol_grid_check.csv', index=False)
 pd.DataFrame(rows_s2).to_csv(OUT / 'sobol_s2.csv', index=False)
-pd.DataFrame(rows_gp).to_csv(OUT / 'sobol_gp_check.csv', index=False)
+pd.DataFrame(rows_gp).to_csv(OUT / 'sobol_poly_check.csv', index=False)
 
 # ----------------------------------------------------------------------
 # 6-factor headline table: Dist as an equal-weight group factor
@@ -309,7 +284,7 @@ for vf, ef in ANCHORS:
     for t in TARGETS:
         s1_acc, st_acc, v_acc = [], [], []
         for dist in ('constant', 'exponential'):
-            m = bundle[dist]['hgb'][t]
+            m = bundle[dist]['gp'][t]
 
             def mapper(U, vf=vf, ef=ef):
                 X = np.empty((len(U), 5))
@@ -355,8 +330,8 @@ print(f'S1: median {d1.median():.4f}  max {d1.max():.4f}')
 print(f'ST: median {dt.median():.4f}  max {dt.max():.4f}')
 
 gp = pd.DataFrame(rows_gp)
-dg = (gp.S1_hgb - gp.S1_gp).abs()
-print(f'GP vs HGB (continuous S1): median {dg.median():.4f}  max {dg.max():.4f}')
+dg = (gp.S1_poly - gp.S1_gp).abs()
+print(f'polynomial vs GP (continuous S1): median {dg.median():.4f}  max {dg.max():.4f}')
 
 cond = pd.DataFrame(rows_cond)
 print('\n=== conditional S1 for E3_Em ===')

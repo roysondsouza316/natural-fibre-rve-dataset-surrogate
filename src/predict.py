@@ -1,5 +1,5 @@
 """
-Evaluate the trained surrogate for one parameter combination.
+Evaluate the Gaussian-process surrogate for one parameter combination.
 
     python predict.py --vf 0.20 --efem 20 --alpha 2 --lp 100 --kappa 10 --dist exponential
 
@@ -18,37 +18,66 @@ Output: the nine homogenised constants normalised by the matrix modulus,
 direction 3 being the fibre direction. The fibre thickness of the dataset
 is 10 um; for other thicknesses scale --lp by the thickness ratio.
 
-The models are the histogram gradient-boosting surrogates of the
-manuscript, stored in out/surrogate_hgb.joblib (written by
-01_train_surrogates.py).
+The GP models (Matern-5/2 kernel, log targets; see surrogate_gp.py) are
+rebuilt on first use from out/dataset.csv with the fitted kernel
+hyperparameters stored in out/gp_hyperparameters.json, without any
+optimisation, and cached in out/surrogate_gp.joblib for later calls.
 """
 import argparse
+import json
 from pathlib import Path
 
 import joblib
 import numpy as np
+import pandas as pd
+
+from surrogate_gp import gp_surrogate, theta_deg, FEATURES
 
 HERE = Path(__file__).resolve().parent
-BUNDLE = HERE / 'out' / 'surrogate_hgb.joblib'
+DATA = HERE / 'out' / 'dataset.csv'
+HYPER = HERE / 'out' / 'gp_hyperparameters.json'
+CACHE = HERE / 'out' / 'surrogate_gp.joblib'
 RANGES = {'vf': (0.10, 0.30), 'efem': (4.0, 48.0), 'alpha': (1.0, 3.0),
           'lp': (50.0, 200.0)}
 TARGETS = ['E1_Em', 'E2_Em', 'E3_Em', 'G12_Em', 'G13_Em', 'G23_Em',
            'v12', 'v13', 'v23']
 
 
-def theta_deg(kappa):
-    """Mean deviation inclination of the von Mises-Fisher backbone."""
-    if kappa == 0:
-        return 0.0
-    return float(np.degrees(np.arccos(1 / np.tanh(kappa) - 1 / kappa)))
+def build_models():
+    """Refit the GP pipelines with the stored kernel hyperparameters."""
+    df = pd.read_csv(DATA)
+    df['tdeg'] = df['theta'].map(lambda k: theta_deg(int(k)))
+    df['logL'] = np.log10(df['length_value'])
+    hyper = json.load(open(HYPER))
+    models = {}
+    for dist in ('constant', 'exponential'):
+        sub = df[df.length_distribution_type == dist]
+        X = sub[FEATURES].values
+        models[dist] = {}
+        for t in TARGETS:
+            pipe = gp_surrogate(restarts=0)
+            gpr = pipe[-1].regressor
+            gpr.kernel = gpr.kernel.clone_with_theta(
+                np.array(hyper[dist][t]['theta']))
+            gpr.optimizer = None
+            models[dist][t] = pipe.fit(X, sub[t].values)
+    joblib.dump(models, CACHE, compress=3)
+    return models
 
 
-def predict(vf, efem, alpha, lp, tdeg, dist, bundle=None):
+def load_models():
+    if CACHE.exists():
+        return joblib.load(CACHE)
+    print('building the GP models from the dataset (first use only) ...',
+          flush=True)
+    return build_models()
+
+
+def predict(vf, efem, alpha, lp, tdeg, dist, models=None):
     """Return a dict of the nine constants for one parameter set."""
-    bundle = bundle or joblib.load(BUNDLE)
-    models = bundle[dist]['hgb']
+    models = models or load_models()
     x = np.array([[vf, efem, alpha, np.log10(lp), tdeg]])
-    return {t: float(models[t].predict(x)[0]) for t in TARGETS}
+    return {t: float(models[dist][t].predict(x)[0]) for t in TARGETS}
 
 
 def main():

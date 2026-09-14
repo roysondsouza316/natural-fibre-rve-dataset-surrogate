@@ -10,16 +10,17 @@ The repository contains the full parametric finite-element homogenisation
 dataset (2520 RVE simulations), the fibre-orientation sub-study (252
 simulations), the scripts that train the machine-learning surrogates, the surrogate-based Sobol global sensitivity analysis with its
 exact-factorial verification chain, the literature plug-in validation, and
-the surrogate benchmark.
+the comparison with a polynomial surrogate.
 
 ## Contents
 
 ```
 src/
-  01_train_surrogates.py       trains the HGB and GP surrogates per length
+  01_train_surrogates.py       trains the GP surrogate of record and the
+                               polynomial cross-check per length
                                distribution and runs the verification chain
                                (exact grid ANOVA, grid-restricted Saltelli
-                               check, GP cross-check)
+                               check, polynomial cross-check)
   02_sobol_indices.py          final Sobol computation (centred estimator,
                                N = 2^14): continuous indices, second-order
                                pairs, 6-factor headline table, conditional
@@ -28,17 +29,68 @@ src/
                                surrogate and compares predicted E3
   04_exact_anova.py            exact factorial ANOVA on the design grid
                                (Supplementary Material)
-  05_model_benchmark.py        cross-validated surrogate benchmark
-  predict.py                   evaluates the trained surrogate for one
-                               parameter combination (see below)
+  05_model_benchmark.py        10-fold cross-validation of the GP and the
+                               polynomial surrogate
+  predict.py                   evaluates the Gaussian-process surrogate for
+                               one parameter combination (see below)
+  surrogate_gp.py              definition of the surrogate of record
+  surrogate_poly.py            definition of the polynomial comparison
+                               surrogate
   out/
-    surrogate_hgb.joblib          the trained gradient-boosting surrogates
+    gp_hyperparameters.json       fitted kernel hyperparameters of the GP
     dataset.csv                   the 2520-run dataset (see below)
     orientation_dataset.csv       the 252-run orientation sub-study (see below)
+    test_set/*.csv                the 60-point independent test set (see below)
     sensitivity/*.csv             Sobol indices, verification checks,
                                   literature validation inputs and results
-    benchmark/*.csv               benchmark scores per model and target
+    benchmark/*.csv               cross-validation scores of the two models
 ```
+
+## Workflow
+
+```mermaid
+flowchart TB
+    DS[("out/dataset.csv<br/>2520 RVE simulations")]
+
+    S1["01_train_surrogates.py<br/>train GP + polynomial surrogates,<br/>run verification chain (~30 min)"]
+    S2["02_sobol_indices.py<br/>final Sobol indices, N = 2^14<br/>(manuscript numbers)"]
+    S3["03_literature_validation.py<br/>predict E3 for literature<br/>material systems"]
+    S4["04_exact_anova.py<br/>exact factorial ANOVA<br/>(Supplementary Material)"]
+    S5["05_model_benchmark.py<br/>10-fold CV: GP vs polynomial"]
+    P["predict.py<br/>evaluate the surrogate for<br/>one parameter combination"]
+
+    B[/"surrogates_tdeg.joblib<br/>(not in repo, ~260 MB)"/]
+    H[/"gp_hyperparameters.json"/]
+
+    O2[/"sensitivity/sobol_*.csv<br/>indices, S2 pairs, checks"/]
+    O3[/"sensitivity/literature_validation.csv"/]
+    O4[/"sensitivity/classical_anova.csv"/]
+    O5[/"benchmark/model_benchmark*.csv"/]
+    O6[/"nine elastic constants<br/>for your inputs"/]
+
+    DS --> S1
+    S1 --> B
+    S1 --> H
+    B --> S2 --> O2
+    B --> S3 --> O3
+    DS --> S4 --> O4
+    DS --> S5 --> O5
+    DS --> P
+    H --> P --> O6
+```
+
+Just want property predictions? Only `predict.py` is needed — it
+rebuilds the GP surrogate from the dataset on first use (about a minute,
+no training pipeline required):
+
+```
+pip install -r requirements.txt
+cd src
+python predict.py --vf 0.20 --efem 20 --alpha 2 --lp 100 --kappa 10 --dist exponential
+```
+
+See [Using the surrogate](#using-the-surrogate) for the meaning of the
+inputs and how to call the surrogate from your own code.
 
 ## The dataset
 
@@ -84,11 +136,26 @@ from their periodic images.
 | `case`, `fiber_modulus`, `matrix_modulus` | modulus-ratio index and the fibre and matrix moduli; the matrix modulus is 1, so `fiber_modulus` equals E_f/E_m |
 | `E1` ... `v23` | the nine homogenised constants normalised by the matrix modulus, direction 3 being the mean fibre direction |
 
+## The independent test set
+
+`src/out/test_set/` holds the 30 additional RVEs used to test the
+surrogate between the design levels: `test_set_design.csv` (inputs drawn
+by Latin hypercube sampling inside the design window, two modulus ratios
+per RVE), `test_set_fe_results.csv` (the 60 homogenised property sets, same
+column layout as the orientation dataset), `test_set_surrogate_predictions.csv`
+(GP and polynomial predictions at the same points) and `test_set_comparison.csv`
+(error per constant and model).
+
 ## Using the surrogate
 
-The trained gradient-boosting surrogates of the manuscript are stored in
-`src/out/surrogate_hgb.joblib` (10 MB). `predict.py` evaluates them for
-one parameter combination and prints the nine constants:
+The surrogate of the manuscript is a Gaussian process (Matern-5/2 kernel
+on standardised inputs, fitted to the logarithm of each constant; see
+`src/surrogate_gp.py`). The trained models are too large for the
+repository, so `predict.py` rebuilds them on first use from the dataset
+with the fitted kernel hyperparameters in `src/out/gp_hyperparameters.json`
+(about a minute, no optimisation) and caches them locally. It then
+evaluates them for one parameter combination and prints the nine
+constants:
 
 ```
 cd src
@@ -125,10 +192,11 @@ python 05_model_benchmark.py
 
 All scripts use fixed random seeds, so the outputs in `src/out/` are
 reproduced exactly. The trained surrogate bundle
-(`src/out/sensitivity/surrogates_tdeg.joblib`, about 260 MB, dominated by
-the Gaussian-process cross-check models) is not stored in the repository;
-`01_train_surrogates.py` regenerates it from the dataset in a few minutes
-and also rewrites the light `surrogate_hgb.joblib` used by `predict.py`.
+(`src/out/sensitivity/surrogates_tdeg.joblib`, about 260 MB because the
+Gaussian processes store their training matrices) is not stored in the
+repository;
+`01_train_surrogates.py` regenerates it from the dataset in about half an
+hour and also rewrites `gp_hyperparameters.json` used by `predict.py`.
 
 The RVE generation, periodic meshing and finite-element homogenisation that
 produced the dataset were carried out with the in-house microstructure

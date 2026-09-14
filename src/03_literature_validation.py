@@ -1,24 +1,16 @@
-"""
-Literature plug-in validation of the surrogate
-----------------------------------------------
-Reads hand-curated experimental points (out/sensitivity/
-literature_points.csv), maps each to the surrogate inputs and compares
-the predicted longitudinal modulus with the measured one.
+"""Literature plug-in validation of the surrogate.
 
-Mapping rules (stated in the manuscript):
-  Vf        taken as reported, or converted from wt% with the phase
-            densities via  Vf = (w/rho_f) / (w/rho_f + (1-w)/rho_m)
-  Ef/Em     from the reported constituent moduli, clipped to [4, 48]
-  L feature the surrogate was trained at D = 10 um, so the physically
-            comparable length is matched through the aspect ratio:
-            L_eq = 10 um x (L/D)_paper, clipped to [50, 200] um
-  waviness  as-processed (tdeg = 25.8 deg); alpha = 2 (mid level);
-            exponential length distribution
-  E3        prediction = (E3/Em)_surrogate x Em_paper
+Maps hand-curated experimental points (out/sensitivity/
+literature_points.csv) to the surrogate inputs and compares the
+predicted longitudinal modulus E3 with the measured one. Vf is taken as
+reported or converted from wt% with the phase densities; Ef/Em from the
+constituent moduli; fibre length is matched through the aspect ratio
+(L_eq = 10 um x (L/D)_paper, the dataset fibre thickness being 10 um);
+waviness at the calibrated level (kappa_theta = 10, tdeg = 25.8 deg),
+alpha = 2, exponential length distribution. Inputs clipped to the
+design window are flagged.
 
-Any clipped input is flagged in the output table.
-
-Output: out/sensitivity/literature_validation.csv (+ console table)
+Writes out/sensitivity/literature_validation.csv (+ console table).
 """
 from pathlib import Path
 import numpy as np
@@ -34,7 +26,7 @@ TDEG_AS = 25.8
 ALPHA = 2.0
 
 bundle = joblib.load(SENS / 'surrogates_tdeg.joblib')
-hgb = bundle['exponential']['hgb']['E3_Em']
+gp = bundle['exponential']['gp']['E3_Em']
 
 df = pd.read_csv(POINTS, comment='#')
 rows = []
@@ -61,7 +53,7 @@ for r in df.itertuples():
         flags.append(f'L_eq {l_eq:.0f}->{l_c:.0f}')
     # --- predict ------------------------------------------------------
     X = np.array([[vf_c, efem_c, ALPHA, np.log10(l_c), TDEG_AS]])
-    e3 = hgb.predict(X)[0] * r.Em_GPa
+    e3 = gp.predict(X)[0] * r.Em_GPa
     rows.append(dict(
         source=r.source, system=r.system,
         Vf=round(vf, 3), EfEm=round(efem, 1),

@@ -1,14 +1,11 @@
-"""
-Exact factorial ANOVA for the supplementary material
-----------------------------------------------------
-Ordinary-least-squares ANOVA (Type-II sums of squares) on the full
-factorial, with all six main effects and all two-way interactions; the
-residual (three-way and higher interactions plus RVE realisation
-noise) serves as the error term, the standard practice for a
-single-replicate factorial. Reports df, sum-of-squares share, F and p
-per factor for each independent elastic constant.
+"""Exact factorial ANOVA on the design grid (Supplementary Material).
 
-Output: out/sensitivity/classical_anova.csv (+ console table)
+OLS ANOVA (Type-II sums of squares) with all six main effects and all
+two-way interactions; the residual serves as the error term, standard
+for a single-replicate factorial. Reports df, sum-of-squares share, F
+and p per factor for each independent elastic constant.
+
+Writes out/sensitivity/classical_anova.csv (+ console table).
 """
 from pathlib import Path
 import numpy as np

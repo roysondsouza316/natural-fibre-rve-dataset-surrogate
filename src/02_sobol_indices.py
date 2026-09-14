@@ -1,9 +1,11 @@
-"""Final Sobol computation with the centred first-order estimator and
-N = 2^14 base samples. Writes the continuous-range indices, the
-second-order pair indices, the 6-factor headline table and the
-conditional indices at fixed compositions; these are the numbers
-reported in the manuscript. Requires the surrogate bundle saved by
-01_train_surrogates.py (whose GP and grid checks are unaffected)."""
+"""Final Sobol computation reported in the manuscript.
+
+Centred first-order estimator, N = 2^14 base samples. Writes the
+continuous-range indices, the second-order pairs, the 6-factor headline
+table and the conditional indices at fixed compositions to
+out/sensitivity/. Requires the surrogate bundle saved by
+01_train_surrogates.py.
+"""
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -67,7 +69,7 @@ rows_cont, rows_s2 = [], []
 store = {}
 for dist in ('constant', 'exponential'):
     for t in TARGETS:
-        m = bundle[dist]['hgb'][t]
+        m = bundle[dist]['gp'][t]
         A_u, B_u = saltelli_matrices(N, 5, seed=101)
         A, B = map_continuous(A_u), map_continuous(B_u)
         fA, fB = m.predict(A), m.predict(B)
@@ -123,7 +125,7 @@ for vf, ef in ANCHORS:
     for t in TARGETS:
         s1_acc, st_acc, v_acc = [], [], []
         for dist in ('constant', 'exponential'):
-            m = bundle[dist]['hgb'][t]
+            m = bundle[dist]['gp'][t]
 
             def mapper(U):
                 X = np.empty((len(U), 5))
