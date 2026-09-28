@@ -29,21 +29,28 @@ src/
                                surrogate and compares predicted E3
   04_exact_anova.py            exact factorial ANOVA on the design grid
                                (Supplementary Material)
-  05_model_benchmark.py        10-fold cross-validation of the GP and the
-                               polynomial surrogate
+  05_model_benchmark.py        fit, 10-fold cross-validation and test-set
+                               scores of the GP and of polynomial
+                               regressions of degree 2 to 5
+  06_poly_coefficients.py      writes the coefficient tables of the
+                               polynomial regression
   predict.py                   evaluates the Gaussian-process surrogate for
                                one parameter combination (see below)
   surrogate_gp.py              definition of the surrogate of record
-  surrogate_poly.py            definition of the polynomial comparison
-                               surrogate
+  surrogate_poly.py            definition of the polynomial regression
+                               used for comparison
   out/
     gp_hyperparameters.json       fitted kernel hyperparameters of the GP
+    sensitivity/poly_coefficients_*.csv
+                                  coefficients of the polynomial regression,
+                                  one file per length distribution (see below)
     dataset.csv                   the 2520-run dataset (see below)
     orientation_dataset.csv       the 252-run orientation sub-study (see below)
     test_set/*.csv                the 60-point independent test set (see below)
     sensitivity/*.csv             Sobol indices, verification checks,
                                   literature validation inputs and results
-    benchmark/*.csv               cross-validation scores of the two models
+    benchmark/*.csv               scores of the GP and the polynomial
+                                  variants (fit, cross-validation, test set)
 ```
 
 ## Workflow
@@ -178,6 +185,29 @@ from predict import predict
 predict(vf=0.20, efem=20, alpha=2, lp=100, tdeg=25.8, dist='exponential')
 ```
 
+The polynomial regression used for comparison in the manuscript is
+available with `--model poly` (total degree with `--degree`, default 4).
+An input with k design levels determines its powers up to k - 1 only, so
+by default the monomials with a higher power are left out; `--all-terms`
+keeps them, which reproduces the grid equally well but leaves the
+prediction between the design levels undefined (try `--alpha 2.5`):
+
+```
+python predict.py --vf 0.20 --efem 20 --alpha 2.5 --model poly
+python predict.py --vf 0.20 --efem 20 --alpha 2.5 --model poly --all-terms
+```
+
+The polynomial can also be evaluated without any code from
+`src/out/sensitivity/poly_coefficients_constant.csv` and
+`poly_coefficients_exponential.csv`. Each file lists the 113 terms of the
+degree-4 polynomial: the power of each input in the term (columns `p_vf`,
+`p_EfEm`, `p_alpha`, `p_log10Lp`, `p_tdeg`) and the coefficient for each
+of the nine constants. The inputs are first scaled to [-1, 1] with the
+bounds given in the first two rows (`u_min`, `u_max`), the constant is
+the sum over the terms of coefficient times the product of the scaled
+inputs raised to their powers. The files are written by
+`06_poly_coefficients.py`.
+
 ## Reproducing the analysis
 
 ```
@@ -188,6 +218,7 @@ python 02_sobol_indices.py
 python 03_literature_validation.py
 python 04_exact_anova.py
 python 05_model_benchmark.py
+python 06_poly_coefficients.py
 ```
 
 All scripts use fixed random seeds, so the outputs in `src/out/` are
